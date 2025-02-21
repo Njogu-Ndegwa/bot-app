@@ -2,17 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy the entire project into the container
-COPY . .
+# Copy requirements.txt first to leverage Docker layer caching
+COPY requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set the PYTHONPATH to include the app directory
-ENV PYTHONPATH=/app
+# Copy the application code into the container
+COPY ./app/ .
 
-# Expose port for FastAPI
+# Expose the port
 EXPOSE 6500
 
-# Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "6500"]
+# Run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "6500"]
