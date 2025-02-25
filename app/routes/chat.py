@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from models.schemas import QueryRequest, ChatResponse
 from services.db import get_user_conversation_history, save_conversation
 from services.vector_store import VectorStore
-from services.llm import create_system_prompt, generate_response
+from services.llm import create_system_prompt, generate_response, analyze_question
 
 router = APIRouter()
 vector_store = VectorStore()
@@ -31,11 +31,11 @@ async def websocket_chat(websocket: WebSocket):
             data = await websocket.receive_json()
             user_id = data.get("user_id")
             question = data.get("question")
-
+            user_conversation = get_user_conversation_history(user_id)
             # Send conversation history upon first connection
             if user_id and question is None:  # If no question, just the user_id
                 # Retrieve the user's conversation history
-                user_conversation = get_user_conversation_history(user_id)
+
                 await websocket.send_json({
                     "history": user_conversation
                 })
@@ -47,9 +47,12 @@ async def websocket_chat(websocket: WebSocket):
                 continue
 
             try:
-                # Get relevant documents from vector store
-                relevant_docs = vector_store.query(question)
 
+                analyzed_question = await analyze_question(question, user_conversation)
+                print(analyzed_question, "Analyzed question")
+                # Get relevant documents from vector store
+                relevant_docs = vector_store.query(analyzed_question)
+                print(relevant_docs, "-----55---")
                 # Create system prompt with relevant docs
                 system_prompt = create_system_prompt(relevant_docs)
 
@@ -57,7 +60,7 @@ async def websocket_chat(websocket: WebSocket):
                 messages = [{"role": "system", "content": system_prompt}]
 
                 # Add user's conversation history
-                user_conversation = get_user_conversation_history(user_id)
+
                 for exchange in user_conversation:
                     messages.append({"role": "user", "content": exchange['question']})
                     messages.append({"role": "assistant", "content": exchange['answer']})

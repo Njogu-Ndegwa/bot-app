@@ -46,4 +46,61 @@ def create_system_prompt(context_docs: str) -> str:
     {context_docs}
     """
 
+
+async def analyze_question(question: str, user_conversation: list) -> str:
+    """
+    Analyzes if a question is a follow-up or a unique question.
+    For follow-up questions, it rewrites them with context from previous conversation.
+    For unique questions, it returns the original question.
+    
+    Args:
+        question: The current user question
+        user_conversation: List of previous Q&A exchanges [{"question": str, "answer": str}]
+        
+    Returns:
+        str: Either the original question or a rewritten question with context
+    """
+    if not user_conversation:
+        return question  # No conversation history, so must be a unique question
+    
+    # Prepare context for the LLM to analyze
+    analysis_prompt = f"""
+    Analyze the following conversation and determine if the latest question is a follow-up question
+    or a unique question. If it's a follow-up, rewrite it to include the necessary context.
+    If it's a unique question, return the original question unchanged.
+    
+    Previous conversation:
+    """
+    
+    # Add conversation history
+    for i, exchange in enumerate(user_conversation[-3:]):  # Only use the last 3 exchanges to save context
+        analysis_prompt += f"\nQ{i+1}: {exchange['question']}\nA{i+1}: {exchange['answer']}\n"
+    
+    analysis_prompt += f"\nLatest question: {question}\n\nInstructions:\n"
+    analysis_prompt += """
+    1. If this is a follow-up question that relies on previous context (contains pronouns like "it", "they", 
+       "this", "that", refers to something previously discussed, or is incomplete without context), 
+       rewrite it to be self-contained with relevant context.
+    2. If this is a brand new question unrelated to previous exchanges, return the original question unchanged.
+    3. Start your response with either "REWRITTEN:" followed by the rewritten question, or "ORIGINAL:" 
+       followed by the unchanged question.
+    """
+    
+    # Prepare messages for LLM
+    messages = [
+        {"role": "system", "content": "You are an AI assistant that analyzes conversations to determine if questions are follow-ups or unique questions."},
+        {"role": "user", "content": analysis_prompt}
+    ]
+    
+    # Use the same LLM to analyze the question
+    response = await generate_response(messages)
+    
+    # Parse the response to get the analyzed question
+    if response.startswith("REWRITTEN:"):
+        return response.replace("REWRITTEN:", "").strip()
+    elif response.startswith("ORIGINAL:"):
+        return response.replace("ORIGINAL:", "").strip()
+    else:
+        # If the format is not as expected, return the original question to be safe
+        return question
     
