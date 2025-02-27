@@ -3,13 +3,13 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements.txt first to leverage Docker layer caching
-COPY requirements.txt .
+COPY ../requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code into the container
-COPY ./app/ .
+COPY ../app .
 
 # Expose the port
 EXPOSE 6500
