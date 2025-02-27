@@ -1,18 +1,17 @@
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Copy requirements.txt first to leverage Docker layer caching
-COPY ../requirements.txt .
-
-# Install dependencies
+FROM python:3.11-slim AS builder
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+WORKDIR /bot
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code into the container
-COPY ../app .
-
-# Expose the port
-EXPOSE 6500
-
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "6500"]
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+WORKDIR /bot
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY . .
+RUN chmod +x ../start.sh
+CMD ["../start.sh"]
