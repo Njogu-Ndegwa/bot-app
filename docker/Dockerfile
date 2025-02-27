@@ -13,5 +13,5 @@ WORKDIR /bot
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY . .
-RUN chmod +x ../start.sh
-CMD ["../start.sh"]
+RUN chmod +x start.sh
+CMD ["start.sh"]
