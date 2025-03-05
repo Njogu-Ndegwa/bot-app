@@ -17,6 +17,9 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "document_chunks")
 LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 
+
+FACEBOOK_VERIFY_TOKEN = os.getenv("FACEBOOK_VERIFY_TOKEN")
+PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 # Optional: Validate critical configuration
 if not LLM_API_KEY:
     print("WARNING: LLM_API_KEY environment variable is not set")

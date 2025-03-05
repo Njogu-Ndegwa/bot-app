@@ -1,11 +1,14 @@
 """
 Chat endpoint routes.
 """
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
 from models.schemas import QueryRequest, ChatResponse
 from services.db import get_user_conversation_history, save_conversation
 from services.vector_store import VectorStore
 from services.llm import create_system_prompt, generate_response, analyze_question
+from config import FACEBOOK_VERIFY_TOKEN, PAGE_ACCESS_TOKEN
+import requests
+import json
 
 router = APIRouter()
 vector_store = VectorStore()
@@ -89,3 +92,124 @@ async def websocket_chat(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("Client disconnected")
+
+
+# Webhook verification endpoint (GET)
+@router.get("/bot-webhook")
+async def verify_webhook(request: Request):
+    """
+    Handles webhook verification requests from Facebook.
+
+    Facebook sends a GET request with query parameters to verify the webhook:
+    - hub.mode: Should be "subscribe".
+    - hub.verify_token: Must match the predefined VERIFY_TOKEN.
+    - hub.challenge: Must be returned as the response body if verification succeeds.
+    """
+    query_params = request.query_params
+    mode = query_params.get("hub.mode")
+    token = query_params.get("hub.verify_token")
+    challenge = query_params.get("hub.challenge")
+    
+    if mode == "subscribe" and token == FACEBOOK_VERIFY_TOKEN:
+        print("Webhook verified successfully")
+        return Response(content=challenge, media_type="text/plain")
+    else:
+        print("Webhook verification failed")
+        raise HTTPException(status_code=403, detail="Verification failed")
+
+
+# Webhook message handler (POST)
+@router.post("/bot-webhook")
+async def handle_incoming_messages(request: Request):
+    """
+    Handles incoming messages from Facebook Messenger.
+
+    This endpoint:
+    1. Parses the incoming webhook payload.
+    2. Processes each messaging event containing a text message.
+    3. Retrieves conversation history using sender_id as user_id.
+    4. Analyzes the message and queries the vector store.
+    5. Generates an LLM response based on the system prompt and history.
+    6. Saves the conversation to the database.
+    7. Sends the response back to the user via the Facebook Messenger API.
+    8. Returns a success status to acknowledge receipt.
+    """
+    try:
+        # Parse the incoming request payload
+        payload = await request.json()
+        print(f"Received Webhook Payload: {json.dumps(payload, indent=2)}")
+
+        # Process each messaging event
+        for entry in payload.get("entry", []):
+            for messaging_event in entry.get("messaging", []):
+                if "message" in messaging_event:
+                    sender_id = messaging_event["sender"]["id"]
+                    message_text = messaging_event["message"].get("text", "")
+                    print(f"Message from {sender_id}: {message_text}")
+
+                    # Skip if no text content (e.g., attachments not handled yet)
+                    if not message_text:
+                        print(f"No text content in message from {sender_id}, skipping")
+                        continue
+
+                    try:
+                        # Use sender_id as user_id
+                        user_id = sender_id
+                        user_conversation = get_user_conversation_history(user_id)
+
+                        # Analyze the incoming message
+                        analyzed_question = await analyze_question(message_text, user_conversation)
+
+                        # Query vector store for relevant documents
+                        relevant_docs = vector_store.query(analyzed_question)
+
+                        # Create system prompt with relevant documents
+                        system_prompt = create_system_prompt(relevant_docs)
+
+                        # Build message list: system prompt + history + current message
+                        messages = [{"role": "system", "content": system_prompt}]
+                        for exchange in user_conversation:
+                            messages.append({"role": "user", "content": exchange['question']})
+                            messages.append({"role": "assistant", "content": exchange['answer']})
+                        messages.append({"role": "user", "content": message_text})
+
+                        # Generate LLM response
+                        llm_response = await generate_response(messages)
+
+                        # Save the conversation
+                        save_conversation(user_id, message_text, llm_response)
+
+                        # Send the response back to the user
+                        send_facebook_message(sender_id, llm_response)
+
+                    except Exception as e:
+                        # Handle errors gracefully
+                        error_msg = f"Sorry, I encountered an error. Please try again later."
+                        print(f"Error processing message from {sender_id}: {e}")
+                        send_facebook_message(sender_id, error_msg)
+
+        return {"status": "success"}
+    except Exception as e:
+        print(f"Error processing webhook: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while processing the request")
+
+def send_facebook_message(recipient_id: str, message_text: str):
+    """
+    Send a message to the user via Facebook Messenger API and log any errors.
+    """
+    url = "https://graph.facebook.com/v15.0/me/messages"
+    headers = {"Content-Type": "application/json"}
+    params = {"access_token": PAGE_ACCESS_TOKEN}
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {"text": message_text},
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, params=params)
+        response.raise_for_status()
+        print(f"Message sent to {recipient_id}: {message_text}")
+    except requests.RequestException as e:
+        print(f"Error sending message to {recipient_id}: {e}")
+        if response is not None:
+            print(f"API Response: {response.text}")
