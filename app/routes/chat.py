@@ -9,6 +9,8 @@ from services.llm import create_system_prompt, generate_response, analyze_questi
 from config import FACEBOOK_VERIFY_TOKEN, PAGE_ACCESS_TOKEN
 import requests
 import json
+from hepler import rebuild_vector_db
+import asyncio
 
 router = APIRouter()
 vector_store = VectorStore()
@@ -214,3 +216,13 @@ def send_facebook_message(recipient_id: str, message_text: str):
         if response is not None:
             print(f"API Response: {response.text}")
 
+@router.get("/rebuild-vector-db")
+async def rebuild_vector_db_endpoint():
+    """
+    Endpoint to trigger an asynchronous rebuild of the vector database.
+    
+    Returns:
+        dict: Confirmation message indicating the rebuild has started.
+    """
+    asyncio.create_task(rebuild_vector_db())
+    return {"message": "Vector DB rebuild started"}
