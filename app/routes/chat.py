@@ -213,3 +213,4 @@ def send_facebook_message(recipient_id: str, message_text: str):
         print(f"Error sending message to {recipient_id}: {e}")
         if response is not None:
             print(f"API Response: {response.text}")
+
