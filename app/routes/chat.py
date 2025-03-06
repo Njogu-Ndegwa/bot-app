@@ -112,6 +112,9 @@ async def verify_webhook(request: Request):
     token = query_params.get("hub.verify_token")
     challenge = query_params.get("hub.challenge")
     
+    print(token, "Token")
+    print(FACEBOOK_VERIFY_TOKEN, "Facebook Verify token")
+    print(mode, "---117")
     if mode == "subscribe" and token == FACEBOOK_VERIFY_TOKEN:
         print("Webhook verified successfully")
         return Response(content=challenge, media_type="text/plain")
