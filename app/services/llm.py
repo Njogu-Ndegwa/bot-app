@@ -112,6 +112,7 @@ from litellm import acompletion
 from config import LLM_MODEL, LLM_API_KEY
 
 async def generate_response(messages: list) -> str:
+    print(LLM_API_KEY, LLM_MODEL, "------115------LLM API")
     """
     Generate a response using the LLM model.
     
