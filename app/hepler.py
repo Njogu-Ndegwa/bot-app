@@ -227,7 +227,7 @@ Please return the metadata in the following format:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": document_content},
                 ],
-                api_key="sk-AUxlpoH47ZfOuQSQro80L7RKlDTfxHN69eNfav1Pc7T3BlbkFJotKp2GrQMEo5_4D7TQAwFLAbQpLSe5h8xBAzEEYbkA"
+                api_key=LLM_API_KEY
             )
             metadata = response.choices[0].message.content
             try:
