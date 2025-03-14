@@ -133,7 +133,7 @@ async def generate_response(messages: list) -> str:
         messages=messages,
         api_key=LLM_API_KEY
     )
-    
+    print(response, "Response----136----")
     return response.choices[0].message.content
 
 async def check_if_pricing_question(question: str) -> bool:
@@ -162,7 +162,7 @@ Output only "NO" if the question is not about pricing.
         api_key=LLM_API_KEY,
         max_tokens=5  # We only need a short YES/NO response
     )
-    
+    print(response, "Is Pricing question")
     answer = response.choices[0].message.content.strip().upper()
     return "YES" in answer
 
