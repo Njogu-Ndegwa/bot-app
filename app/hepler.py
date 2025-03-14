@@ -19,17 +19,39 @@ open_client = OpenAI(api_key=LLM_API_KEY)
 
 # --- Existing Helper Functions (Unchanged) ---
 
+# def convert_product_to_document(product: dict) -> Document:
+#     """
+#     Convert a product dictionary to a Document instance.
+#     Maps 'title' to document name and 'body_html' to content.
+#     Additional fields are included in metadata.
+#     """
+#     return Document(
+#         name=product.get("title", "Untitled Product"),
+#         content=product.get("body_html", ""),
+#         metadata={
+#             "title": product.get("title"),
+#             "vendor": product.get("vendor", ""),
+#             "status": product.get("status", ""),
+#         }
+#     )
+
+
 def convert_product_to_document(product: dict) -> Document:
     """
     Convert a product dictionary to a Document instance.
-    Maps 'title' to document name and 'body_html' to content.
+    Maps 'title' to document name and 'body_html' to content,
+    while prefixing the content with the product title.
     Additional fields are included in metadata.
     """
+    product_title = product.get("title", "Untitled Product")
+    body_html = product.get("body_html", "")
+    enhanced_content = f"Product: {product_title}\n\n{body_html}"
+    print(enhanced_content, "Enhanced Content")
     return Document(
-        name=product.get("title", "Untitled Product"),
-        content=product.get("body_html", ""),
+        name=product_title,
+        content=enhanced_content,
         metadata={
-            "title": product.get("title"),
+            "title": product_title,
             "vendor": product.get("vendor", ""),
             "status": product.get("status", ""),
         }
@@ -270,6 +292,24 @@ async def rebuild_vector_db():
         product_documents = [convert_product_to_document(prod) for prod in products]
         article_documents = [convert_article_to_document(edge) for edge in article_edges]
         all_documents = product_documents + article_documents
+
+                # Step 3: Write documents to file for inspection
+        with open('vector_db_documents.json', 'w') as f:
+            # Using pprint for more readable output
+            import json
+            json_data = []
+            for doc in all_documents:
+                # Convert document to dict for JSON serialization
+                doc_dict = {
+                    'name': doc.name,
+                    'content': doc.content,
+                    'metadata': doc.metadata
+                }
+                json_data.append(doc_dict)
+            
+            json.dump(json_data, f, indent=2)
+        
+        print(f"Wrote {len(all_documents)} documents to vector_db_documents.json")
 
         # Step 3: Generate metadata with retries
         metadata_tasks = [generate_metadata_for_document(doc) for doc in all_documents]
