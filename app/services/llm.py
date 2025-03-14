@@ -112,7 +112,6 @@ from litellm import acompletion
 from config import LLM_MODEL, LLM_API_KEY
 
 async def generate_response(messages: list) -> str:
-    print(LLM_API_KEY, LLM_MODEL, "------115------LLM API")
     """
     Generate a response using the LLM model.
     
@@ -133,7 +132,6 @@ async def generate_response(messages: list) -> str:
         messages=messages,
         api_key=LLM_API_KEY
     )
-    print(response, "Response----136----")
     return response.choices[0].message.content
 
 async def check_if_pricing_question(question: str) -> bool:
@@ -155,6 +153,7 @@ Output only "NO" if the question is not about pricing.
         {"role": "user", "content": f"Question: {question}\nIs this a question about pricing?"}
     ]
     
+q
     # Use a smaller response size since we only need YES/NO
     response = await acompletion(
         model=LLM_MODEL,
@@ -162,7 +161,7 @@ Output only "NO" if the question is not about pricing.
         api_key=LLM_API_KEY,
         max_tokens=5  # We only need a short YES/NO response
     )
-    print(response, "Is Pricing question")
+
     answer = response.choices[0].message.content.strip().upper()
     return "YES" in answer
 
