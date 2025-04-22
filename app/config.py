@@ -20,6 +20,7 @@ LLM_API_KEY = os.getenv("LLM_API_KEY")
 
 FACEBOOK_VERIFY_TOKEN = os.getenv("FACEBOOK_VERIFY_TOKEN")
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 # Optional: Validate critical configuration
 if not LLM_API_KEY:
     print("WARNING: LLM_API_KEY environment variable is not set")

@@ -6,7 +6,7 @@ from models.schemas import QueryRequest, ChatResponse
 from services.db import get_user_conversation_history, save_conversation
 from services.vector_store import VectorStore
 from services.llm import create_system_prompt, generate_response, analyze_question
-from config import FACEBOOK_VERIFY_TOKEN, PAGE_ACCESS_TOKEN
+from config import FACEBOOK_VERIFY_TOKEN, PAGE_ACCESS_TOKEN, WHATSAPP_TOKEN
 import requests
 import json
 from hepler import rebuild_vector_db
@@ -123,80 +123,208 @@ async def verify_webhook(request: Request):
         raise HTTPException(status_code=403, detail="Verification failed")
 
 
-# Webhook message handler (POST)
+# # Webhook message handler (POST)
+# @router.post("/bot-webhook")
+# async def handle_incoming_messages(request: Request):
+#     """
+#     Handles incoming messages from Facebook Messenger.
+
+#     This endpoint:
+#     1. Parses the incoming webhook payload.
+#     2. Processes each messaging event containing a text message.
+#     3. Retrieves conversation history using sender_id as user_id.
+#     4. Analyzes the message and queries the vector store.
+#     5. Generates an LLM response based on the system prompt and history.
+#     6. Saves the conversation to the database.
+#     7. Sends the response back to the user via the Facebook Messenger API.
+#     8. Returns a success status to acknowledge receipt.
+#     """
+#     try:
+#         # Parse the incoming request payload
+#         payload = await request.json()
+#         print(f"Received Webhook Payload: {json.dumps(payload, indent=2)}")
+
+#         # Process each messaging event
+#         for entry in payload.get("entry", []):
+#             for messaging_event in entry.get("messaging", []):
+#                 if "message" in messaging_event:
+#                     sender_id = messaging_event["sender"]["id"]
+#                     message_text = messaging_event["message"].get("text", "")
+#                     print(f"Message from {sender_id}: {message_text}")
+
+#                     # Skip if no text content (e.g., attachments not handled yet)
+#                     if not message_text:
+#                         print(f"No text content in message from {sender_id}, skipping")
+#                         continue
+
+#                     try:
+#                         # Use sender_id as user_id
+#                         user_id = sender_id
+#                         user_conversation = get_user_conversation_history(user_id)
+
+#                         # Analyze the incoming message
+#                         analyzed_question = await analyze_question(message_text, user_conversation)
+
+#                         # Query vector store for relevant documents
+#                         relevant_docs = vector_store.query(analyzed_question)
+
+#                         # Create system prompt with relevant documents
+#                         system_prompt = create_system_prompt(relevant_docs)
+
+#                         # Build message list: system prompt + history + current message
+#                         messages = [{"role": "system", "content": system_prompt}]
+#                         for exchange in user_conversation:
+#                             messages.append({"role": "user", "content": exchange['question']})
+#                             messages.append({"role": "assistant", "content": exchange['answer']})
+#                         messages.append({"role": "user", "content": message_text})
+
+#                         # Generate LLM response
+#                         llm_response = await generate_response(messages)
+
+#                         # Save the conversation
+#                         save_conversation(user_id, message_text, llm_response)
+
+#                         # Send the response back to the user
+#                         send_facebook_message(sender_id, llm_response)
+
+#                     except Exception as e:
+#                         # Handle errors gracefully
+#                         error_msg = f"Sorry, I encountered an error. Please try again later."
+#                         print(f"Error processing message from {sender_id}: {e}")
+#                         send_facebook_message(sender_id, error_msg)
+
+#         return {"status": "success"}
+#     except Exception as e:
+#         print(f"Error processing webhook: {e}")
+#         raise HTTPException(status_code=500, detail="An error occurred while processing the request")
+
+
 @router.post("/bot-webhook")
 async def handle_incoming_messages(request: Request):
     """
-    Handles incoming messages from Facebook Messenger.
-
-    This endpoint:
-    1. Parses the incoming webhook payload.
-    2. Processes each messaging event containing a text message.
-    3. Retrieves conversation history using sender_id as user_id.
-    4. Analyzes the message and queries the vector store.
-    5. Generates an LLM response based on the system prompt and history.
-    6. Saves the conversation to the database.
-    7. Sends the response back to the user via the Facebook Messenger API.
-    8. Returns a success status to acknowledge receipt.
+    Handles incoming messages from both Facebook Messenger and WhatsApp Business API.
     """
     try:
         # Parse the incoming request payload
         payload = await request.json()
         print(f"Received Webhook Payload: {json.dumps(payload, indent=2)}")
 
-        # Process each messaging event
-        for entry in payload.get("entry", []):
-            for messaging_event in entry.get("messaging", []):
-                if "message" in messaging_event:
-                    sender_id = messaging_event["sender"]["id"]
-                    message_text = messaging_event["message"].get("text", "")
-                    print(f"Message from {sender_id}: {message_text}")
+        # Determine which platform the message is from based on payload structure
+        if "object" in payload:
+            # Handle WhatsApp messages
+            if payload["object"] == "whatsapp_business_account":
+                for entry in payload.get("entry", []):
+                    for change in entry.get("changes", []):
+                        if change.get("field") == "messages":
+                            for message in change.get("value", {}).get("messages", []):
+                                if message.get("type") == "text":
+                                    # Extract WhatsApp sender and message info
+                                    sender_id = message.get("from")
+                                    message_text = message.get("text", {}).get("body", "")
+                                    print(f"WhatsApp message from {sender_id}: {message_text}")
+                                    
+                                    if not message_text:
+                                        continue
+                                    
+                                    await process_message(sender_id, message_text, platform="whatsapp")
+            
+            # Handle Facebook Messenger messages (your existing code path)
+            elif payload["object"] == "page":
+                for entry in payload.get("entry", []):
+                    for messaging_event in entry.get("messaging", []):
+                        if "message" in messaging_event:
+                            sender_id = messaging_event["sender"]["id"]
+                            message_text = messaging_event["message"].get("text", "")
+                            print(f"Message from {sender_id}: {message_text}")
 
-                    # Skip if no text content (e.g., attachments not handled yet)
-                    if not message_text:
-                        print(f"No text content in message from {sender_id}, skipping")
-                        continue
-
-                    try:
-                        # Use sender_id as user_id
-                        user_id = sender_id
-                        user_conversation = get_user_conversation_history(user_id)
-
-                        # Analyze the incoming message
-                        analyzed_question = await analyze_question(message_text, user_conversation)
-
-                        # Query vector store for relevant documents
-                        relevant_docs = vector_store.query(analyzed_question)
-
-                        # Create system prompt with relevant documents
-                        system_prompt = create_system_prompt(relevant_docs)
-
-                        # Build message list: system prompt + history + current message
-                        messages = [{"role": "system", "content": system_prompt}]
-                        for exchange in user_conversation:
-                            messages.append({"role": "user", "content": exchange['question']})
-                            messages.append({"role": "assistant", "content": exchange['answer']})
-                        messages.append({"role": "user", "content": message_text})
-
-                        # Generate LLM response
-                        llm_response = await generate_response(messages)
-
-                        # Save the conversation
-                        save_conversation(user_id, message_text, llm_response)
-
-                        # Send the response back to the user
-                        send_facebook_message(sender_id, llm_response)
-
-                    except Exception as e:
-                        # Handle errors gracefully
-                        error_msg = f"Sorry, I encountered an error. Please try again later."
-                        print(f"Error processing message from {sender_id}: {e}")
-                        send_facebook_message(sender_id, error_msg)
+                            if not message_text:
+                                print(f"No text content in message from {sender_id}, skipping")
+                                continue
+                            
+                            await process_message(sender_id, message_text, platform="facebook")
 
         return {"status": "success"}
     except Exception as e:
         print(f"Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while processing the request")
+
+async def process_message(sender_id: str, message_text: str, platform: str):
+    """
+    Process messages from any platform and send responses.
+    """
+    try:
+        # Use sender_id as user_id
+        user_id = sender_id
+        user_conversation = get_user_conversation_history(user_id)
+
+        # Analyze the incoming message
+        analyzed_question = await analyze_question(message_text, user_conversation)
+
+        # Query vector store for relevant documents
+        relevant_docs = vector_store.query(analyzed_question)
+
+        # Create system prompt with relevant documents
+        system_prompt = create_system_prompt(relevant_docs)
+
+        # Build message list: system prompt + history + current message
+        messages = [{"role": "system", "content": system_prompt}]
+        for exchange in user_conversation:
+            messages.append({"role": "user", "content": exchange['question']})
+            messages.append({"role": "assistant", "content": exchange['answer']})
+        messages.append({"role": "user", "content": message_text})
+
+        # Generate LLM response
+        llm_response = await generate_response(messages)
+
+        # Save the conversation
+        save_conversation(user_id, message_text, llm_response)
+
+        # Send response based on platform
+        if platform == "facebook":
+            send_facebook_message(sender_id, llm_response)
+        elif platform == "whatsapp":
+            send_whatsapp_message(sender_id, llm_response)
+
+    except Exception as e:
+        # Handle errors gracefully
+        error_msg = f"Sorry, I encountered an error. Please try again later."
+        print(f"Error processing message from {sender_id}: {e}")
+        
+        if platform == "facebook":
+            send_facebook_message(sender_id, error_msg)
+        elif platform == "whatsapp":
+            send_whatsapp_message(sender_id, error_msg)
+
+
+def send_whatsapp_message(recipient_id: str, message_text: str):
+    """
+    Send a message to the user via WhatsApp Business API.
+    """
+    # Get your WhatsApp Phone Number ID from the Meta dashboard
+    phone_number_id = "551662914706608"  # Replace with your actual Phone Number ID
+    
+    url = f"https://graph.facebook.com/v15.0/{phone_number_id}/messages"
+    headers = {"Content-Type": "application/json"}
+    params = {"access_token": WHATSAPP_TOKEN}  # Use the same token or a WhatsApp-specific one
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": recipient_id,
+        "type": "text",
+        "text": {
+            "body": message_text
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, params=params)
+        response.raise_for_status()
+        print(f"WhatsApp message sent to {recipient_id}: {message_text}")
+    except requests.RequestException as e:
+        print(f"Error sending WhatsApp message to {recipient_id}: {e}")
+        if 'response' in locals() and response is not None:
+            print(f"API Response: {response.text}")
+
 
 def send_facebook_message(recipient_id: str, message_text: str):
     """
@@ -218,6 +346,7 @@ def send_facebook_message(recipient_id: str, message_text: str):
         print(f"Error sending message to {recipient_id}: {e}")
         if response is not None:
             print(f"API Response: {response.text}")
+
 
 @router.get("/rebuild-vector-db")
 async def rebuild_vector_db_endpoint():

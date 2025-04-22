@@ -79,23 +79,126 @@ def convert_article_to_document(article_edge: dict) -> Document:
         }
     )
 
-async def fetch_products() -> List[dict]:
+# async def fetch_products() -> List[dict]:
+#     """
+#     Fetch product data from Shopify via REST.
+#     """
+#     shop_name = "oves-2022"
+#     admin_access_token = "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"
+#     products_url = f"https://{shop_name}.myshopify.com/admin/api/2023-04/products.json?limit=250"
+#     headers = {
+#         "X-Shopify-Access-Token": admin_access_token,
+#         "Content-Type": "application/json"
+#     }
+#     async with httpx.AsyncClient() as client:
+#         response = await client.get(products_url, headers=headers)
+#         if response.status_code == 200:
+#             return response.json().get("products", [])
+#         else:
+#             raise Exception(f"Failed to fetch products: {response.status_code}\n{response.text}")
+
+
+async def fetch_products(output_file="shopify_products.txt") -> List[dict]:
     """
-    Fetch product data from Shopify via REST.
+    Fetch product data from Shopify via GraphQL API and write the full response to a text file.
+    
+    Args:
+        output_file: Path to the output text file where results will be written
+        
+    Returns:
+        List of product dictionaries
     """
     shop_name = "oves-2022"
     admin_access_token = "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"
-    products_url = f"https://{shop_name}.myshopify.com/admin/api/2023-04/products.json?limit=250"
+    graphql_url = f"https://{shop_name}.myshopify.com/admin/api/2023-04/graphql.json"
+    
+    # Define the GraphQL query
+    query = """
+    query {
+      products(first: 250) {
+        edges {
+          node {
+            id
+            title
+            vendor
+            handle
+            descriptionHtml
+            description
+            options {
+              name
+              values
+            }
+
+            properties: metafield(namespace: "custom", key: "properties") {
+              key
+              value
+            }
+          }
+        }
+      }
+    }
+    """
+    
+    # GraphQL request payload
+    payload = {
+        "query": query
+    }
+    
     headers = {
         "X-Shopify-Access-Token": admin_access_token,
         "Content-Type": "application/json"
     }
+    
     async with httpx.AsyncClient() as client:
-        response = await client.get(products_url, headers=headers)
+        response = await client.post(graphql_url, json=payload, headers=headers)
+        
         if response.status_code == 200:
-            return response.json().get("products", [])
+            data = response.json()
+            
+            # Check for errors in the GraphQL response
+            if "errors" in data:
+                raise Exception(f"GraphQL errors: {data['errors']}")
+            
+            # Write the full raw response to a text file
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write("=== FULL GRAPHQL RESPONSE ===\n\n")
+                f.write(json.dumps(data, indent=2, ensure_ascii=False))
+                f.write("\n\n=== END OF FULL RESPONSE ===\n\n")
+                
+                # Also write a more readable product list
+                if "data" in data and "products" in data["data"]:
+                    f.write("=== PRODUCTS SUMMARY ===\n\n")
+                    for i, edge in enumerate(data["data"]["products"]["edges"], 1):
+                        product = edge["node"]
+                        f.write(f"Product {i}: {product.get('title')} (Handle: {product.get('handle')})\n")
+                        f.write(f"  - ID: {product.get('id')}\n")
+                        f.write(f"  - Metafields found: {len(product.get('metafields', {}).get('edges', []))}\n")
+                        
+                        # Check for specific metafields
+                        for metafield_name in ["mainMedia", "additionalMedia", "properties"]:
+                            if product.get(metafield_name):
+                                f.write(f"  - Has {metafield_name}: Yes\n")
+                            else:
+                                f.write(f"  - Has {metafield_name}: No\n")
+                        
+                        f.write("\n")
+            
+            # Transform the data to match the structure you might expect
+            products = []
+            for edge in data.get("data", {}).get("products", {}).get("edges", []):
+                products.append(edge["node"])
+            
+            print(f"Results written to {output_file}")
+            return products
         else:
-            raise Exception(f"Failed to fetch products: {response.status_code}\n{response.text}")
+            error_message = f"Failed to fetch products: {response.status_code}\n{response.text}"
+            
+            # Write error to file too
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write("=== ERROR RESPONSE ===\n\n")
+                f.write(error_message)
+            
+            raise Exception(error_message)
 
 async def fetch_articles() -> List[dict]:
     """
