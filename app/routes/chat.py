@@ -212,18 +212,12 @@ async def handle_incoming_messages(request: Request):
         # Determine which platform the message is from based on payload structure
         if "object" in payload:
             # Handle WhatsApp messages
-            print("-----215-----")
             if payload["object"] == "whatsapp_business_account":
                 for entry in payload.get("entry", []):
-                    print("-----217-----")
                     for change in entry.get("changes", []):
-                        print("-----219-----")
                         if change.get("field") == "messages":
-                            print("-----221-----")
                             for message in change.get("value", {}).get("messages", []):
-                                print("-----223-----")
                                 if message.get("type") == "text":
-                                    print("------225----")
                                     # Extract WhatsApp sender and message info
                                     sender_id = message.get("from")
                                     message_text = message.get("text", {}).get("body", "")
