@@ -3,7 +3,7 @@ name: Prod Workflow for building, publishing to Github Registry and create Relea
 on:
   push:
     branches:
-      - master
+      - main
 
 env:
   GH_VERSION: ${{github.sha}}
