@@ -404,3 +404,4 @@ async def rebuild_vector_db_endpoint():
     """
     asyncio.create_task(rebuild_vector_db())
     return {"message": "Vector DB rebuild started"}
+
