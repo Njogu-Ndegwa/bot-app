@@ -6,7 +6,7 @@ from models.schemas import QueryRequest, ChatResponse
 from services.db import get_user_conversation_history, save_conversation
 from services.vector_store import VectorStore
 from services.llm import create_system_prompt, generate_response, analyze_question
-from config import FACEBOOK_VERIFY_TOKEN, PAGE_ACCESS_TOKEN, WHATSAPP_TOKEN
+from config import FACEBOOK_VERIFY_TOKEN, PAGE_ACCESS_TOKEN, WHATSAPP_TOKEN, TELEGRAM_API_URL
 import requests
 import json
 from hepler import rebuild_vector_db
@@ -94,6 +94,24 @@ async def websocket_chat(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("Client disconnected")
+
+
+# in your router file
+@router.post("/telegram-webhook")
+async def telegram_webhook(update: dict):          # Telegram always POSTs JSON
+    """
+    Receives Telegram updates, hands the text off to the common
+    `process_message` routine, and returns 200 OK immediately
+    so Telegram knows the webhook succeeded.
+    """
+    # Basic text–message guard (ignores stickers, photos, etc.)
+    if "message" in update and "text" in update["message"]:
+        chat_id      = str(update["message"]["chat"]["id"])   # use as user_id
+        message_text = update["message"]["text"]
+
+        await process_message(chat_id, message_text, platform="telegram")
+
+    return {"ok": True}    # Telegram expects JSON with HTTP-200
 
 
 # Webhook verification endpoint (GET)
@@ -291,6 +309,8 @@ async def process_message(sender_id: str, message_text: str, platform: str):
             send_facebook_message(sender_id, llm_response)
         elif platform == "whatsapp":
             send_whatsapp_message(sender_id, llm_response)
+        elif platform == "telegram":
+            send_telegram_message(sender_id, llm_response)
 
     except Exception as e:
         # Handle errors gracefully
@@ -353,6 +373,25 @@ def send_facebook_message(recipient_id: str, message_text: str):
         print(f"Error sending message to {recipient_id}: {e}")
         if response is not None:
             print(f"API Response: {response.text}")
+
+# Telegram ------------------------------------------350----------------------
+
+def send_telegram_message(chat_id: str, text: str):
+    """
+    Fire a plain-text message back to a Telegram chat.
+    """
+    url     = f"{TELEGRAM_API_URL}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        print(f"Telegram message sent to {chat_id}: {text}")
+    except requests.RequestException as e:
+        print(f"Error sending Telegram message to {chat_id}: {e}")
+        if 'response' in locals() and response is not None:
+            print(f"API Response: {response.text}")
+
 
 
 @router.get("/rebuild-vector-db")
